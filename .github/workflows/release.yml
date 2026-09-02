@@ -1,0 +1,96 @@
+# Publishes a release when a version tag is pushed:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Everything a user downloads is built here, from the tagged commit, so a
+# release can always be traced back to the exact source it came from.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Derive version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}' -replace '^v', ''
+          "value=$version" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # Self-contained so the download works on a clean machine: asking someone
+      # to install a .NET runtime before they can try the app loses most of them.
+      # Not single-file — WinDivert.dll and WinDivert64.sys must be real files
+      # next to the executable, because the driver is registered from the path
+      # it is found at.
+      - name: Publish
+        shell: pwsh
+        run: >
+          dotnet publish src/Pointsman.App/Pointsman.App.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:Version=${{ steps.version.outputs.value }}
+          -o publish
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      # Don't hardcode the path: Inno Setup installs to Program Files, Program
+      # Files (x86) or the user's AppData depending on how it was installed, and
+      # a wrong guess fails only at release time.
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if ($iscc) { $iscc = $iscc.Source } else {
+            $iscc = Get-ChildItem `
+              "$env:ProgramFiles\Inno Setup 6\ISCC.exe", `
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", `
+              "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" `
+              -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+          Write-Host "Using $iscc"
+          & $iscc /DAppVersion=${{ steps.version.outputs.value }} installer\Pointsman.iss
+
+      - name: Build portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path publish\* `
+            -DestinationPath "dist\Pointsman-${{ steps.version.outputs.value }}-win-x64-portable.zip"
+
+      # Neither the installer nor the executable is code-signed, so a checksum
+      # is the only way for someone to confirm the file they downloaded is the
+      # file this workflow produced.
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            ForEach-Object {
+              '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+            } | Out-File dist\SHA256SUMS.txt -Encoding ascii
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem dist -File | ForEach-Object { $_.FullName }
+          gh release create '${{ github.ref_name }}' $files `
+            --title 'Pointsman ${{ github.ref_name }}' `
+            --generate-notes

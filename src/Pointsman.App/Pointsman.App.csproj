@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Pointsman.App</RootNamespace>
+    <AssemblyName>Pointsman</AssemblyName>
+    <Platforms>x64</Platforms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- Embeds the icon in the executable, which is where Explorer, the taskbar
+         and the uninstall entry all read it from. Regenerate it with
+         assets\generate-icon.ps1 rather than editing the binary. -->
+    <ApplicationIcon>Resources\pointsman.ico</ApplicationIcon>
+    <!-- The UI is English only, so WPF's translated framework strings are dead
+         weight — they were more than half the files in a self-contained build. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pointsman.Core\Pointsman.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Also as a resource, so the Window can name it directly: the icon a WPF
+         window inherits from the executable is scaled from one size, and looks
+         soft in the title bar and Alt-Tab next to one picked per size. -->
+    <Resource Include="Resources\pointsman.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="native\WinDivert.dll">
+      <Link>WinDivert.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="native\WinDivert64.sys">
+      <Link>WinDivert64.sys</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

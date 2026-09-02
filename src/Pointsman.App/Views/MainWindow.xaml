@@ -1,0 +1,209 @@
+<Window x:Class="Pointsman.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Pointsman.App.ViewModels"
+        Title="Pointsman — Choose a network adapter per app"
+        Icon="pack://application:,,,/Resources/pointsman.ico"
+        Height="740" Width="1200"
+        MinHeight="520" MinWidth="880"
+        FlowDirection="LeftToRight"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        Background="{StaticResource CanvasBrush}"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True"
+        Closing="Window_Closing"
+        StateChanged="Window_StateChanged">
+
+    <DockPanel>
+        <!-- Header -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource BrandBrush}" Padding="22,16">
+            <StackPanel Orientation="Horizontal">
+                <Border Width="34" Height="34" CornerRadius="9" Background="{StaticResource AccentBrush}"
+                        VerticalAlignment="Center" Margin="0,0,13,0">
+                    <TextBlock Text="⇄" FontSize="18" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Pointsman" FontSize="17" FontWeight="SemiBold" Foreground="White"/>
+                    <TextBlock Text="Choose which network adapter each app uses"
+                               FontSize="12" Foreground="{StaticResource BrandMutedBrush}" Margin="0,1,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource SidebarBrush}" Padding="22,12"
+                BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,0">
+            <StackPanel>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" LineHeight="18">
+                    Rules take effect automatically — pick an adapter and that app's connections use it, with nothing to configure inside the app.
+                    Not covered: DNS lookups, which Windows resolves through a system service and so always follow the default route.
+                </TextBlock>
+                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource BrandMutedBrush}" Margin="0,6,0,0">
+                    Pointsman comes with absolutely no warranty. Free software under the GNU GPL v3 — you are welcome to redistribute it under its terms.
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="292"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Adapters panel -->
+            <Border Grid.Column="0" Background="{StaticResource SidebarBrush}"
+                    BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,1,0">
+                <DockPanel Margin="16,18,16,0">
+                    <TextBlock DockPanel.Dock="Top" Text="NETWORK ADAPTERS" Style="{StaticResource SectionLabel}"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Adapters}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:AdapterViewModel}">
+                                    <Border Style="{StaticResource Card}">
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Grid.Column="0" Text="{Binding KindIcon}" FontSize="16"
+                                                           VerticalAlignment="Center" Margin="0,0,9,0"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13.5"
+                                                           FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                                                <!-- live/idle dot -->
+                                                <Ellipse Grid.Column="2" Width="8" Height="8" VerticalAlignment="Center">
+                                                    <Ellipse.Style>
+                                                        <Style TargetType="Ellipse">
+                                                            <Setter Property="Fill" Value="{StaticResource IdleBrush}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsUp}" Value="True">
+                                                                    <Setter Property="Fill" Value="{StaticResource SuccessBrush}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Ellipse.Style>
+                                                </Ellipse>
+                                            </Grid>
+
+                                            <TextBlock Text="{Binding StatusText}" FontSize="11.5"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="25,7,0,0"/>
+                                            <TextBlock Text="{Binding ProxyText}" FontSize="11"
+                                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" Margin="25,3,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Apps panel -->
+            <DockPanel Grid.Column="1" Margin="22,18,22,0">
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Grid.Column="0" MaxWidth="340" HorizontalAlignment="Left"
+                             Style="{StaticResource SearchTextBox}"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Tag="Search apps…"/>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Add app" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding BrowseForAppCommand}"/>
+                        <Button Content="Refresh" Style="{StaticResource SecondaryButton}"
+                                Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                </Grid>
+
+                <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,18">
+                    <DataGrid ItemsSource="{Binding AppsView}" Style="{StaticResource ModernDataGrid}"
+                              Margin="4,8,4,4" IsReadOnly="False">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="" Width="54">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="{x:Type vm:AppRowViewModel}">
+                                        <Image Source="{Binding Icon}" Width="26" Height="26"
+                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="APPLICATION" Width="2*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="{x:Type vm:AppRowViewModel}">
+                                        <StackPanel Margin="0,11">
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="13.5" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding ExecutablePath}" FontSize="11"
+                                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{Binding RuleInactiveText}" FontSize="11"
+                                                       Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" MaxWidth="430" HorizontalAlignment="Left"
+                                                       Margin="0,5,0,0" LineHeight="16"
+                                                       Visibility="{Binding IsRuleInactive, Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="STATUS" Width="104">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="{x:Type vm:AppRowViewModel}">
+                                        <Border CornerRadius="11" Padding="9,3" HorizontalAlignment="Left">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="{StaticResource HoverBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                                            <Setter Property="Background" Value="{StaticResource AccentSoftBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding RunningStateText}" FontSize="11" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="OUTBOUND ADAPTER" Width="264">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate DataType="{x:Type vm:AppRowViewModel}">
+                                        <ComboBox Style="{StaticResource ModernComboBox}"
+                                                  ItemsSource="{Binding AvailableAdapters}"
+                                                  SelectedItem="{Binding SelectedAdapter, Mode=TwoWay}"
+                                                  SelectionChanged="AdapterComboBox_SelectionChanged"
+                                                  Height="34" Margin="0,8"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

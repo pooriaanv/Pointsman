@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Diagnostic trace written at runtime by DebugLog
+debug-trace.log
+
+# The throwaway console app that proved WinDivert loads on this machine before
+# any of the real work started. It is kept locally because it is still the
+# quickest way to test a machine, but it is not part of the program and has no
+# business in the repository.
+#
+# Its WinDivert download came from
+# https://github.com/basil00/WinDivert/releases/download/v2.2.2/WinDivert-2.2.2-A.zip
+# The two binaries the app actually ships are committed under
+# src/Pointsman.App/native/.
+spike/
+
+# Release artifacts: produced by the publish step and by Inno Setup, and
+# attached to a GitHub release rather than committed.
+publish/
+dist/
