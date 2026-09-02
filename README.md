@@ -77,6 +77,23 @@ Get-FileHash .\Pointsman-0.1.0-setup.exe -Algorithm SHA256
 The kernel driver itself *is* signed, by the WinDivert authors, and is shipped
 exactly as they published it.
 
+Some antivirus products flag WinDivert as riskware, under names like `HackTool`
+or `RiskWare.WinDivert`. This is not a detection of anything Pointsman does: the
+driver can capture and modify packets, which is a capability worth flagging in
+the abstract and is also the only way per-app routing can work at all. Firewalls,
+VPN clients and packet analysers that use the same driver draw the same warnings.
+Nothing here disables or evades that check — if your antivirus blocks it, that is
+its call to make, and yours to override knowingly.
+
+## Updating
+
+Download the new installer and run it; it upgrades in place. It closes Pointsman
+if it is running, unloads the driver, replaces the files and leaves your rules
+untouched. There is no need to uninstall first.
+
+For the portable build, close Pointsman and replace the folder. Rules live
+outside it and survive.
+
 ## Building
 
 ```
