@@ -63,7 +63,14 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+; shellexec is required, not cosmetic. Setup runs the finish-page launch as the
+; original user rather than as itself, so that installing something does not
+; leave it running as administrator. Pointsman asks for administrator in its
+; manifest, and CreateProcess — which is what Setup uses without this flag —
+; cannot raise a UAC prompt; it just fails with "The requested operation
+; requires elevation", error 740, which is what ticking the box produced.
+; ShellExecuteEx reads the manifest and asks properly.
+Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallRun]
 ; WinDivert registers its driver as a service on first use and removes it when
