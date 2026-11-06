@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using Pointsman.Core.Settings;
 using Pointsman.Core.Updates;
@@ -16,9 +17,18 @@ public partial class SettingsWindow : Window
         AutoInstallBox.IsChecked = store.Current.AutoInstallUpdates;
 
         var version = AppVersion.Current();
-        VersionText.Text = version.IsDevelopmentBuild
-            ? $"Version {version} (development build: does not check for updates)"
-            : $"Version {version}";
+        VersionRun.Text = version.ToString();
+        if (version.IsDevelopmentBuild)
+        {
+            VersionNote.Text = "Development build: does not check for updates.";
+            VersionNote.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void Link_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)

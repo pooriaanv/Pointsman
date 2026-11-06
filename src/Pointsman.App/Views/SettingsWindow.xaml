@@ -36,8 +36,58 @@
             </StackPanel>
         </Border>
 
-        <TextBlock x:Name="VersionText" FontSize="11.5" Margin="2,4,0,0"
-                   Foreground="{StaticResource TextTertiaryBrush}"/>
+        <TextBlock Text="ABOUT" Style="{StaticResource SectionLabel}" Margin="0,12,0,10"/>
+
+        <Border Style="{StaticResource Card}" Padding="16,14">
+            <StackPanel>
+                <TextBlock FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}">
+                    Pointsman <Run x:Name="VersionRun"/>
+                </TextBlock>
+                <TextBlock x:Name="VersionNote" FontSize="11.5" Margin="0,2,0,0"
+                           Foreground="{StaticResource TextTertiaryBrush}" Visibility="Collapsed"/>
+
+                <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="18" Margin="0,8,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                    Chooses which network adapter each Windows app uses. Windows sends all traffic
+                    out of one default route; Pointsman lets you send each program through
+                    Ethernet, Wi-Fi or a VPN of your choosing, with nothing to set up inside the app.
+                </TextBlock>
+
+                <TextBlock FontSize="12" Margin="0,10,0,0">
+                    <Hyperlink NavigateUri="https://github.com/pooriaanv/Pointsman"
+                               RequestNavigate="Link_RequestNavigate"
+                               Foreground="{StaticResource AccentBrush}">github.com/pooriaanv/Pointsman</Hyperlink>
+                </TextBlock>
+                <TextBlock FontSize="12" Margin="0,4,0,0">
+                    <Hyperlink NavigateUri="https://github.com/pooriaanv/Pointsman/issues"
+                               RequestNavigate="Link_RequestNavigate"
+                               Foreground="{StaticResource AccentBrush}">Report a problem</Hyperlink>
+                </TextBlock>
+
+                <TextBlock Text="Privacy" FontSize="12.5" FontWeight="SemiBold" Margin="0,14,0,0"
+                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                <!-- Every claim here was checked against the code. Keep it true: if Pointsman ever
+                     starts sending or storing something new, this text has to change with it. -->
+                <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="18" Margin="0,4,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                    Pointsman collects nothing about you and sends nothing anywhere. There is no
+                    account, no analytics and no telemetry. Your traffic passes through it on this
+                    computer and is not recorded.
+                </TextBlock>
+                <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="18" Margin="0,6,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                    Your rules and settings are saved only on this computer, in a Pointsman folder
+                    under AppData. The only connection Pointsman makes on its own is to GitHub, to
+                    check for and download updates.
+                </TextBlock>
+
+                <TextBlock TextWrapping="Wrap" FontSize="11" LineHeight="16" Margin="0,14,0,0"
+                           Foreground="{StaticResource TextTertiaryBrush}">
+                    Free software under the GNU GPL v3, with absolutely no warranty. Uses the
+                    WinDivert driver by basil00.
+                </TextBlock>
+            </StackPanel>
+        </Border>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="Save" Style="{StaticResource PrimaryButton}" IsDefault="True" Click="Save_Click"/>
