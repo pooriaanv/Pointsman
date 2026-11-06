@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Building only reads the repository. Without this the token gets the repository's default
+# permissions, which can include write access a pull request's build has no business having.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
