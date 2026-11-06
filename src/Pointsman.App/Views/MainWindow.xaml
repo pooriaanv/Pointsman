@@ -55,7 +55,9 @@
                                Foreground="{StaticResource TextPrimaryBrush}"/>
                     <TextBlock Text="{Binding Detail}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0"
                                Foreground="{StaticResource TextSecondaryBrush}"/>
-                    <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4" Margin="0,7,0,0"
+                    <!-- Mode=OneWay is required: ProgressBar.Value binds two-way by default, and
+                         Progress is read-only, which throws as the window is first shown. -->
+                    <ProgressBar Value="{Binding Progress, Mode=OneWay}" Maximum="100" Height="4" Margin="0,7,0,0"
                                  MaxWidth="360" HorizontalAlignment="Stretch"
                                  Foreground="{StaticResource AccentBrush}" Background="{StaticResource BorderBrushSoft}"
                                  BorderThickness="0"
