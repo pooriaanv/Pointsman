@@ -1,8 +1,29 @@
+<div align="center">
+
 <img src="assets/pointsman.png" width="96" alt="">
 
 # Pointsman
 
-Choose which network adapter each Windows application uses.
+**Choose which network adapter each Windows application uses.**
+
+[![Build](https://github.com/pooriaanv/Pointsman/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/pooriaanv/Pointsman/actions/workflows/build.yml)
+[![CodeQL](https://github.com/pooriaanv/Pointsman/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/pooriaanv/Pointsman/security/code-scanning)
+[![Release build](https://github.com/pooriaanv/Pointsman/actions/workflows/release.yml/badge.svg)](https://github.com/pooriaanv/Pointsman/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/pooriaanv/Pointsman?color=orange)](https://github.com/pooriaanv/Pointsman/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/pooriaanv/Pointsman/total?color=blue)](https://github.com/pooriaanv/Pointsman/releases)
+[![Downloads of the latest release](https://img.shields.io/github/downloads/pooriaanv/Pointsman/latest/total?color=blue&label=downloads%40latest)](https://github.com/pooriaanv/Pointsman/releases/latest)
+<br>
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011%20x64-0078D6)
+![.NET](https://img.shields.io/badge/.NET-9-512BD4?logo=dotnet&logoColor=white)
+![WPF](https://img.shields.io/badge/WPF-C%23-239120)
+![WinDivert](https://img.shields.io/badge/WinDivert-2.2-555555)
+[![License: GPL-3.0](https://img.shields.io/github/license/pooriaanv/Pointsman?color=green)](LICENSE)
+
+Ethernet, Wi-Fi or VPN, per app · TCP and UDP · no setup inside the app · self-updating
+
+[⬇ Download](https://github.com/pooriaanv/Pointsman/releases/latest) · [What's new](https://github.com/pooriaanv/Pointsman/releases) · [Report a bug](https://github.com/pooriaanv/Pointsman/issues/new)
+
+</div>
 
 Windows routes by destination address, not by application: every program on the
 machine shares one default route. Pointsman adds the missing dimension — pick
