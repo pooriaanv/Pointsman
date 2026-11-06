@@ -2,7 +2,7 @@
 #
 # The mark is the one already in the window header: two arrows passing each
 # other in opposite directions, on the blue rounded square from the palette.
-# The arrows are drawn as geometry rather than set as the ⇄ character, so the
+# The arrows are drawn as geometry rather than set as the <-> character, so the
 # icon does not depend on a font being present and stays crisp at every size.
 #
 # Kept in the repo so the icon can be regenerated rather than being a binary
@@ -80,7 +80,7 @@ function Get-PngBytes([System.Drawing.Bitmap]$bmp) {
     $bytes = $ms.ToArray()
     $ms.Dispose()
     # The comma matters: PowerShell unrolls an array on return, and a byte[] that
-    # comes back as Object[] writes nothing at all through BinaryWriter — the
+    # comes back as Object[] writes nothing at all through BinaryWriter -- the
     # first attempt produced a 118-byte file containing only the header.
     return ,[byte[]]$bytes
 }
@@ -132,8 +132,8 @@ foreach ($size in $sizes) {
     if ($size -eq 256) { $bmp.Save($pngPath, [System.Drawing.Imaging.ImageFormat]::Png) }
 
     # Only the 256 entry is PNG-compressed. GDI+ chokes on PNG entries at some
-    # sizes — Icon.ToBitmap() threw "Requested range extends past the end of the
-    # array" when every entry was stored that way — and at 256 the uncompressed
+    # sizes -- Icon.ToBitmap() threw "Requested range extends past the end of the
+    # array" when every entry was stored that way -- and at 256 the uncompressed
     # form would be 256 KB on its own, so that one is worth the risk.
     $bytes = if ($size -eq 256) { Get-PngBytes $bmp } else { Get-DibBytes $bmp }
     $images += ,@{ Size = $size; Bytes = $bytes }
@@ -190,7 +190,7 @@ if ($missing) { throw "Icon is missing usable frames at: $($missing -join ', ')"
 
 foreach ($size in ($sizes | Where-Object { $_ -le 128 })) {
     $check = New-Object System.Drawing.Icon($icoPath, $size, $size)
-    # Decoding, not just selecting — this is the step that failed while the
+    # Decoding, not just selecting -- this is the step that failed while the
     # entries were PNG.
     $probe = $check.ToBitmap()
     if ($probe.Width -ne $size) { throw "Entry ${size}px decoded to $($probe.Width)px" }
