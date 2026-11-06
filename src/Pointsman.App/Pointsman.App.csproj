@@ -19,6 +19,10 @@
     <!-- The UI is English only, so WPF's translated framework strings are dead
          weight — they were more than half the files in a self-contained build. -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Releases are versioned by their tag: the release workflow passes -p:Version=<tag>,
+         which overrides this. Anything built without it is a development build, which the
+         updater recognises by the "dev" label and leaves alone. -->
+    <Version>0.0.0-dev</Version>
   </PropertyGroup>
 
   <ItemGroup>

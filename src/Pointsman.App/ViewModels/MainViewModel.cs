@@ -9,6 +9,7 @@ using Pointsman.Core.Models;
 using Pointsman.Core.Proxy;
 using Pointsman.Core.Redirect;
 using Pointsman.Core.Rules;
+using Pointsman.Core.Settings;
 
 namespace Pointsman.App.ViewModels;
 
@@ -27,6 +28,7 @@ public sealed class MainViewModel : ViewModelBase, IAsyncDisposable
     private readonly FlowTracker _flowTracker = new();
     private readonly TransparentRedirector _redirector;
     private readonly RuleStore _ruleStore = new();
+    private readonly SettingsStore _settings = new();
     private readonly Dictionary<string, AppRowViewModel> _rowsByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _manuallyAddedPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly System.Windows.Threading.Dispatcher _dispatcher;
@@ -56,6 +58,10 @@ public sealed class MainViewModel : ViewModelBase, IAsyncDisposable
 
     public RelayCommand RefreshCommand { get; }
     public RelayCommand BrowseForAppCommand { get; }
+    public RelayCommand OpenSettingsCommand { get; }
+
+    public SettingsStore Settings => _settings;
+    public UpdateViewModel Updates { get; }
 
     public MainViewModel()
     {
@@ -68,8 +74,12 @@ public sealed class MainViewModel : ViewModelBase, IAsyncDisposable
         _proxyManager = new ProxyManager(_natTable);
         _redirector = new TransparentRedirector(_flowTracker, _natTable, _ruleStore, _proxyManager, VpnClientExeNames);
 
+        Updates = new UpdateViewModel(_settings);
+
         RefreshCommand = new RelayCommand(_ => _ = RefreshAsync());
         BrowseForAppCommand = new RelayCommand(_ => BrowseForApp());
+        OpenSettingsCommand = new RelayCommand(_ =>
+            new SettingsWindow(_settings) { Owner = System.Windows.Application.Current.MainWindow }.ShowDialog());
 
         _adapterMonitor.AdaptersChanged += (_, _) => _dispatcher.InvokeAsync(() => _ = RefreshAsync());
 
@@ -215,6 +225,7 @@ public sealed class MainViewModel : ViewModelBase, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Updates.Dispose();
         _adapterMonitor.Dispose();
         _redirector.Dispose();
         _flowTracker.Dispose();

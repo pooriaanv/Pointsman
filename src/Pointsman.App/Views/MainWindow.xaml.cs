@@ -17,7 +17,57 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
 
         SetupTrayIcon();
-        Loaded += async (_, _) => await _viewModel.RefreshAsync();
+        SetupUpdates();
+        Loaded += async (_, _) =>
+        {
+            await _viewModel.RefreshAsync();
+            _viewModel.Updates.Start();
+        };
+    }
+
+    private void SetupUpdates()
+    {
+        var updates = _viewModel.Updates;
+
+        // The window is usually hidden in the tray, where the banner can't be seen, so a new
+        // release is also announced from the tray icon. Clicking it opens the window on the banner.
+        updates.ReleaseFound += (_, release) =>
+            _trayIcon?.ShowBalloonTip(
+                10_000,
+                release.IsCritical ? "Important Pointsman update" : "Pointsman update available",
+                updates.WillInstallAutomatically(release)
+                    ? $"Version {release.Version} is downloading and will be installed automatically."
+                    : $"Version {release.Version} is available. Open Pointsman to update.",
+                release.IsCritical ? System.Windows.Forms.ToolTipIcon.Warning : System.Windows.Forms.ToolTipIcon.Info);
+
+        // The restart is the part that interrupts people, so warn about it separately, from the
+        // tray as well as the banner, since the window is usually hidden.
+        updates.CountdownStarted += (_, release) =>
+            _trayIcon?.ShowBalloonTip(
+                10_000,
+                "Pointsman will restart in a minute",
+                release.IsCritical
+                    ? $"Installing important update {release.Version}. Routed connections drop briefly."
+                    : $"Installing update {release.Version}. Open Pointsman to postpone it.",
+                System.Windows.Forms.ToolTipIcon.Info);
+
+        // Start setup first, then shut down the same way Exit does, so the driver is released
+        // cleanly instead of setup having to kill the process and stop the service itself.
+        updates.InstallerReady += (_, installer) =>
+        {
+            try
+            {
+                UpdateViewModel.LaunchInstaller(installer);
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                System.Windows.MessageBox.Show(this, $"Could not start the installer:\n\n{ex.Message}", "Pointsman update",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            ExitApplication();
+        };
     }
 
     private void SetupTrayIcon()
@@ -47,6 +97,7 @@ public partial class MainWindow : Window
         _trayIcon.ContextMenuStrip = menu;
 
         _trayIcon.DoubleClick += (_, _) => ShowWindow();
+        _trayIcon.BalloonTipClicked += (_, _) => ShowWindow();
     }
 
     private void ShowWindow()

@@ -1,0 +1,47 @@
+<Window x:Class="Pointsman.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pointsman settings"
+        Icon="pack://application:,,,/Resources/pointsman.ico"
+        Width="460" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        Background="{StaticResource CanvasBrush}"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True">
+
+    <StackPanel Margin="22,20,22,18">
+        <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}" Margin="0,0,0,10"/>
+
+        <Border Style="{StaticResource Card}" Padding="16,14">
+            <StackPanel>
+                <CheckBox x:Name="AutoInstallBox" FontSize="13.5"
+                          Foreground="{StaticResource TextPrimaryBrush}"
+                          VerticalContentAlignment="Center">
+                    Download and install updates automatically
+                </CheckBox>
+                <TextBlock TextWrapping="Wrap" FontSize="11.5" LineHeight="17" Margin="21,6,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                    When off, Pointsman tells you about a new version and installs it only when you
+                    choose Update. Installing restarts Pointsman, which briefly interrupts routed
+                    connections.
+                </TextBlock>
+                <TextBlock TextWrapping="Wrap" FontSize="11.5" LineHeight="17" Margin="21,8,0,0"
+                           Foreground="{StaticResource WarningBrush}">
+                    Updates marked critical, such as security fixes, are always installed
+                    automatically.
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <TextBlock x:Name="VersionText" FontSize="11.5" Margin="2,4,0,0"
+                   Foreground="{StaticResource TextTertiaryBrush}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Save" Style="{StaticResource PrimaryButton}" IsDefault="True" Click="Save_Click"/>
+            <Button Content="Cancel" Style="{StaticResource SecondaryButton}" IsCancel="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

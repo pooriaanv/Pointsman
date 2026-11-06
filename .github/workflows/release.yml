@@ -32,6 +32,36 @@ jobs:
           $version = '${{ github.ref_name }}' -replace '^v', ''
           "value=$version" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      # A release is critical, and installed on every machine without asking, when its tag
+      # message contains [critical]. See docs/RELEASING.md.
+      #
+      # actions/checkout fetches only the commit, and leaves the tag pointing straight at it, so
+      # the annotation, and its message, is not in the clone. Fetch the tag object itself first;
+      # otherwise every release would quietly come out normal.
+      - name: Read release type from tag message
+        id: kind
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch tag $tag" }
+
+          $type = git cat-file -t $tag
+          if ($type -ne 'tag') {
+            Write-Host "::notice::$tag is a lightweight tag with no message, so this is a normal release."
+            "critical=false" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+            return
+          }
+
+          $message = (git tag -l --format='%(contents)' $tag) -join "`n"
+          Write-Host "Tag message:`n$message"
+          if ($message -match '(?i)\[critical\]') {
+            Write-Host "::warning::$tag is marked [critical]: every installed copy will install it without asking."
+            "critical=true" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            "critical=false" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
       # Self-contained so the download works on a clean machine: asking someone
       # to install a .NET runtime before they can try the app loses most of them.
       # Not single-file — WinDivert.dll and WinDivert64.sys must be real files
@@ -85,12 +115,38 @@ jobs:
               '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
             } | Out-File dist\SHA256SUMS.txt -Encoding ascii
 
+      # For a critical release, the marker the app looks for is put ahead of the generated notes
+      # (gh prepends --notes to them), with a visible line saying what it means for people
+      # reading the release page.
       - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $tag = '${{ github.ref_name }}'
           $files = Get-ChildItem dist -File | ForEach-Object { $_.FullName }
-          gh release create '${{ github.ref_name }}' $files `
-            --title 'Pointsman ${{ github.ref_name }}' `
-            --generate-notes
+          $notes = @()
+          if ('${{ steps.kind.outputs.critical }}' -eq 'true') {
+            $notes = @('--notes', "<!-- pointsman:critical -->`n**Critical update.** Installed copies of Pointsman install this automatically.`n")
+          }
+          gh release create $tag $files `
+            --title "Pointsman $tag" `
+            --generate-notes @notes
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+
+      # The marker is what makes clients install the release unasked, so check it is really
+      # there, or really absent, rather than trusting the step above.
+      - name: Verify release type
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Joined: multi-line output from a native command arrives as an array, and -match on
+          # an array filters it instead of answering true or false.
+          $body = (gh release view '${{ github.ref_name }}' --json body --jq .body) -join "`n"
+          $isCritical = $body -match '<!-- pointsman:critical -->'
+          $wanted = '${{ steps.kind.outputs.critical }}' -eq 'true'
+          if ($isCritical -ne $wanted) {
+            throw "Release notes critical marker is $isCritical, expected $wanted. Fix the notes by hand; see docs/RELEASING.md."
+          }
+          Write-Host "Release is $(if ($isCritical) { 'CRITICAL' } else { 'normal' })."

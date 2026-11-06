@@ -72,6 +72,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 ; ShellExecuteEx reads the manifest and asks properly.
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent shellexec
 
+; An update started from inside Pointsman runs setup with /SILENT /RELAUNCH. Silent mode
+; skips the finish page, so the entry above never fires, and Pointsman closed itself to let
+; setup replace it. This starts the new version again. It is not a postinstall entry, so it
+; runs as setup itself, i.e. elevated, which Pointsman needs anyway.
+Filename: "{app}\{#AppExeName}"; Flags: nowait shellexec; Check: ShouldRelaunch
+
 [UninstallRun]
 ; WinDivert registers its driver as a service on first use and removes it when
 ; the last handle closes. If Pointsman was killed rather than closed, that
@@ -130,6 +136,18 @@ begin
   // releases the driver file a moment later. Without this pause the next step
   // can still find it locked.
   Sleep(2000);
+end;
+
+// True when setup was started with /RELAUNCH, Pointsman's own switch for in-app updates.
+// Inno Setup ignores parameters it doesn't know, so this one reaches only us.
+function ShouldRelaunch: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/RELAUNCH') = 0 then
+      Result := True;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

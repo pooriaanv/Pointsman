@@ -17,6 +17,9 @@
     <DockPanel>
         <!-- Header -->
         <Border DockPanel.Dock="Top" Background="{StaticResource BrandBrush}" Padding="22,16">
+            <DockPanel>
+            <Button DockPanel.Dock="Right" Content="⚙  Settings" Style="{StaticResource HeaderButton}"
+                    VerticalAlignment="Center" Command="{Binding OpenSettingsCommand}"/>
             <StackPanel Orientation="Horizontal">
                 <Border Width="34" Height="34" CornerRadius="9" Background="{StaticResource AccentBrush}"
                         VerticalAlignment="Center" Margin="0,0,13,0">
@@ -29,6 +32,39 @@
                                FontSize="12" Foreground="{StaticResource BrandMutedBrush}" Margin="0,1,0,0"/>
                 </StackPanel>
             </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Update banner: shown when a newer release is on GitHub, until dismissed -->
+        <Border DockPanel.Dock="Top" DataContext="{Binding Updates}"
+                Background="{StaticResource AccentSoftBrush}" Padding="22,11"
+                BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,0,0,1"
+                Visibility="{Binding IsBannerVisible, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="What's new" Style="{StaticResource SecondaryButton}"
+                            Command="{Binding ViewReleaseCommand}"/>
+                    <Button Content="{Binding ActionText}" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding UpdateCommand}"/>
+                    <Button Content="{Binding DismissText}" Style="{StaticResource SecondaryButton}"
+                            Command="{Binding DismissCommand}"
+                            Visibility="{Binding CanPostpone, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock Text="{Binding Detail}" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4" Margin="0,7,0,0"
+                                 MaxWidth="360" HorizontalAlignment="Stretch"
+                                 Foreground="{StaticResource AccentBrush}" Background="{StaticResource BorderBrushSoft}"
+                                 BorderThickness="0"
+                                 Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="{Binding ErrorText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,5,0,0"
+                               FontWeight="SemiBold" Foreground="{StaticResource DangerBrush}"
+                               Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+            </DockPanel>
         </Border>
 
         <!-- Footer -->

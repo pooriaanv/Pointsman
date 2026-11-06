@@ -87,12 +87,32 @@ its call to make, and yours to override knowingly.
 
 ## Updating
 
-Download the new installer and run it; it upgrades in place. It closes Pointsman
-if it is running, unloads the driver, replaces the files and leaves your rules
-untouched. There is no need to uninstall first.
+Pointsman checks this repository's releases when it starts and every few
+hours after. When there is a newer version it says so, in the window and from
+the tray icon, and installs it when you choose **Update now**. Updating
+restarts Pointsman, which briefly interrupts routed connections, and leaves
+your rules untouched.
 
-For the portable build, close Pointsman and replace the folder. Rules live
-outside it and survive.
+- **Automatic updates** are off by default. Turn on *Download and install
+  updates automatically* in **Settings** to have every new version installed
+  without asking. You get a minute's warning before Pointsman restarts, and
+  you can postpone it.
+- **Critical updates**, such as security fixes or a bug that lets traffic
+  leave through the wrong adapter, are installed automatically even with that
+  setting off. They are rare and say so on the release page. You still get
+  the minute's warning, but can't postpone them.
+- Every download is checked against the release's `SHA256SUMS.txt` before
+  it runs. A file that doesn't match is deleted and never run.
+
+The check is one request to the public GitHub API. It sends nothing about you
+or your rules.
+
+You can also update by hand: download the new installer and run it. It
+upgrades in place, so there is no need to uninstall first.
+
+For the portable build, Pointsman tells you about new versions but can't
+install them. Close Pointsman and replace the folder; rules live outside it
+and survive.
 
 ## Building
 
@@ -112,7 +132,9 @@ ISCC.exe /DAppVersion=0.1.0 installer\Pointsman.iss
 ```
 
 Pushing a `v*` tag does the same thing on CI and attaches the output to a
-GitHub release.
+GitHub release. Read [docs/RELEASING.md](docs/RELEASING.md) before tagging:
+every installed copy is told about a new release, and one marked critical is
+installed without asking.
 
 ## Known limitations
 
