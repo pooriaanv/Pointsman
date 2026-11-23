@@ -54,12 +54,12 @@
                 </TextBlock>
 
                 <TextBlock FontSize="12" Margin="0,10,0,0">
-                    <Hyperlink NavigateUri="https://github.com/pooriaanv/Pointsman"
+                    <Hyperlink NavigateUri="https://github.com/VihadSrebai/Pointsman"
                                RequestNavigate="Link_RequestNavigate"
                                Foreground="{StaticResource AccentBrush}">github.com/pooriaanv/Pointsman</Hyperlink>
                 </TextBlock>
                 <TextBlock FontSize="12" Margin="0,4,0,0">
-                    <Hyperlink NavigateUri="https://github.com/pooriaanv/Pointsman/issues"
+                    <Hyperlink NavigateUri="https://github.com/VihadSrebai/Pointsman/issues"
                                RequestNavigate="Link_RequestNavigate"
                                Foreground="{StaticResource AccentBrush}">Report a problem</Hyperlink>
                 </TextBlock>

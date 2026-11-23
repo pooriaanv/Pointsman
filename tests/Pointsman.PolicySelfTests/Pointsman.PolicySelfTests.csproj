@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Pointsman.Core/Policies/**/*.cs" Link="Policies/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../src/Pointsman.Core/SystemRouting/**/*.cs" Link="SystemRouting/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../src/Pointsman.Core/Models/NetworkAdapterInfo.cs" Link="Models/NetworkAdapterInfo.cs" />
+    <Compile Include="../../src/Pointsman.Core/Models/AppRule.cs" Link="Models/AppRule.cs" />
+    <Compile Include="../../src/Pointsman.Core/Settings/SettingsStore.cs" Link="Settings/SettingsStore.cs" />
+  </ItemGroup>
+</Project>

@@ -27,6 +27,7 @@ public sealed class UdpRelay : IAsyncDisposable
     }
 
     private readonly IPAddress _bindLocalAddress;
+    private readonly int _interfaceIndex;
     private readonly NatTable _natTable;
     private readonly ConcurrentDictionary<ushort, Flow> _flowsByAppPort = new();
     private readonly CancellationTokenSource _cts = new();
@@ -37,10 +38,11 @@ public sealed class UdpRelay : IAsyncDisposable
     public IPAddress AdapterAddress { get; }
     public int Port { get; private set; }
 
-    public UdpRelay(IPAddress adapterAddress, NatTable natTable)
+    public UdpRelay(IPAddress adapterAddress, int interfaceIndex, NatTable natTable)
     {
         AdapterAddress = adapterAddress;
         _bindLocalAddress = adapterAddress;
+        _interfaceIndex = interfaceIndex > 0 ? interfaceIndex : throw new ArgumentOutOfRangeException(nameof(interfaceIndex));
         _natTable = natTable;
         _loopbackSocket = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         _reaper = new Timer(_ => ReapIdleFlows(), null, FlowIdleTimeout, FlowIdleTimeout);
@@ -89,17 +91,26 @@ public sealed class UdpRelay : IAsyncDisposable
             catch (OperationCanceledException) { return; }
             catch (SocketException ex) { DebugLog.Write($"  -> send FAILED: {ex.SocketErrorCode} {ex.Message}"); }
             catch (ObjectDisposedException) { /* flow reaped mid-send */ }
+            catch (InvalidOperationException ex) { DebugLog.Write($"  -> UDP flow initialization failed: {ex.Message}"); }
         }
     }
 
     private Flow CreateFlow(ushort appPort)
     {
-        // Binding to the adapter's IP is the entire point: it is what makes Windows send this
-        // datagram out of that adapter rather than down the default route.
-        var socket = new UdpClient(new IPEndPoint(_bindLocalAddress, 0));
-        var flow = new Flow(socket, appPort);
-        _ = Task.Run(() => ReceiveRepliesAsync(flow, _cts.Token));
-        return flow;
+        var socket = new UdpClient(AddressFamily.InterNetwork);
+        try
+        {
+            // Select the outgoing interface explicitly, not just the source address.
+            OutboundInterfaceBinding.Configure(socket.Client, _bindLocalAddress, _interfaceIndex);
+            var flow = new Flow(socket, appPort);
+            _ = Task.Run(() => ReceiveRepliesAsync(flow, _cts.Token));
+            return flow;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Replies from the real server, sent back to the app over loopback.</summary>

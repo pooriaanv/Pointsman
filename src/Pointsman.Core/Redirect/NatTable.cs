@@ -70,5 +70,11 @@ public sealed class NatTable : IDisposable
         }
     }
 
+    /// <summary>
+    /// Clear mappings when packet interception is stopped or restarted. Stale
+    /// per-port mappings must not be applied to an unrelated, newly opened flow.
+    /// </summary>
+    public void Clear() => _entries.Clear();
+
     public void Dispose() => _sweepTimer.Dispose();
 }

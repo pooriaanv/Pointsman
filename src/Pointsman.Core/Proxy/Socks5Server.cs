@@ -6,8 +6,7 @@ namespace Pointsman.Core.Proxy;
 
 /// <summary>
 /// SOCKS5 server (CONNECT command only, no authentication) that binds every outbound socket to
-/// a specific local network adapter's IP address before connecting, forcing that adapter to be
-/// used for egress. Serves two kinds of clients on the same port:
+/// a specific IPv4 interface and local address before connecting. Serves two kinds of clients on the same port:
 ///
 ///  - Manually-configured SOCKS5 clients (point an app's proxy setting at 127.0.0.1:&lt;Port&gt;).
 ///  - Transparently redirected connections from <see cref="TransparentRedirector"/>: when the
@@ -18,18 +17,24 @@ namespace Pointsman.Core.Proxy;
 public sealed class Socks5Server : IAsyncDisposable
 {
     private readonly IPAddress _bindLocalAddress;
+    private readonly int _interfaceIndex;
     private readonly NatTable? _natTable;
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts = new();
     private Task? _acceptLoop;
+    private const int MaxConcurrentClients = 256;
+    private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(20);
+    private readonly SemaphoreSlim _clientSlots = new(MaxConcurrentClients, MaxConcurrentClients);
 
     public IPAddress AdapterAddress { get; }
     public int Port { get; private set; }
 
-    public Socks5Server(IPAddress adapterAddress, NatTable? natTable = null, int port = 0)
+    public Socks5Server(IPAddress adapterAddress, int interfaceIndex, NatTable? natTable = null, int port = 0)
     {
         AdapterAddress = adapterAddress;
         _bindLocalAddress = adapterAddress;
+        _interfaceIndex = interfaceIndex > 0 ? interfaceIndex : throw new ArgumentOutOfRangeException(nameof(interfaceIndex));
         _natTable = natTable;
         _listener = new TcpListener(IPAddress.Loopback, port);
     }
@@ -59,8 +64,19 @@ public sealed class Socks5Server : IAsyncDisposable
                 return;
             }
 
-            _ = HandleClientAsync(client, token);
+            if (!_clientSlots.Wait(0))
+            {
+                client.Dispose();
+                continue;
+            }
+            _ = HandleLimitedClientAsync(client, token);
         }
+    }
+
+    private async Task HandleLimitedClientAsync(TcpClient client, CancellationToken token)
+    {
+        try { await HandleClientAsync(client, token).ConfigureAwait(false); }
+        finally { _clientSlots.Release(); }
     }
 
     private async Task HandleClientAsync(TcpClient client, CancellationToken token)
@@ -90,19 +106,20 @@ public sealed class Socks5Server : IAsyncDisposable
             }
             else
             {
-                if (!await DoHandshakeAsync(stream, token).ConfigureAwait(false))
+                using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                handshakeCts.CancelAfter(HandshakeTimeout);
+                if (!await DoHandshakeAsync(stream, handshakeCts.Token).ConfigureAwait(false))
                     return;
 
                 var (destHost, port, addressBytes, addressType) =
-                    await ReadConnectRequestAsync(stream, token).ConfigureAwait(false);
+                    await ReadConnectRequestAsync(stream, handshakeCts.Token).ConfigureAwait(false);
                 destPort = port;
                 isSocksClient = true;
 
                 if (addressType == 3) // domain name
                 {
                     var resolved = await Dns.GetHostAddressesAsync(destHost!, token).ConfigureAwait(false);
-                    destAddress = resolved.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork)
-                        ?? resolved.First();
+                    destAddress = resolved.First(a => a.AddressFamily == AddressFamily.InterNetwork);
                 }
                 else
                 {
@@ -110,15 +127,25 @@ public sealed class Socks5Server : IAsyncDisposable
                 }
             }
 
-            using var outbound = new Socket(SocketType.Stream, ProtocolType.Tcp);
-            // Binding the source address to the chosen adapter's IP forces Windows to
-            // route this connection out via that adapter (assuming it has a valid route
-            // to the destination, which the default gateway on each adapter provides).
-            outbound.Bind(new IPEndPoint(_bindLocalAddress, 0));
+            if (destAddress.AddressFamily != AddressFamily.InterNetwork)
+            {
+                // This version intentionally supports IPv4 sockets only. Reject unsupported
+                // address families cleanly instead of leaving a SOCKS client waiting forever.
+                if (isSocksClient)
+                    await WriteReplyAsync(stream, replyCode: 0x08, token).ConfigureAwait(false);
+                return;
+            }
+
+            using var outbound = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            // Binding to a source IP alone is not a sufficient Windows routing guarantee.
+            // IP_UNICAST_IF selects the actual outgoing interface for the socket.
+            OutboundInterfaceBinding.Configure(outbound, _bindLocalAddress, _interfaceIndex);
 
             try
             {
-                await outbound.ConnectAsync(destAddress, destPort, token).ConfigureAwait(false);
+                using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                connectCts.CancelAfter(ConnectTimeout);
+                await outbound.ConnectAsync(destAddress, destPort, connectCts.Token).ConfigureAwait(false);
             }
             catch (SocketException ex)
             {
@@ -163,7 +190,12 @@ public sealed class Socks5Server : IAsyncDisposable
         if (!await ReadExactAsync(stream, methods, token).ConfigureAwait(false))
             return false;
 
-        // No-auth only.
+        // Only the no-auth method is supported. Reject unsupported auth combinations.
+        if (!methods.Contains((byte)0x00))
+        {
+            await stream.WriteAsync(new byte[] { 0x05, 0xFF }, token).ConfigureAwait(false);
+            return false;
+        }
         await stream.WriteAsync(new byte[] { 0x05, 0x00 }, token).ConfigureAwait(false);
         return true;
     }
@@ -172,8 +204,10 @@ public sealed class Socks5Server : IAsyncDisposable
         NetworkStream stream, CancellationToken token)
     {
         var head = new byte[4];
-        await ReadExactAsync(stream, head, token).ConfigureAwait(false);
-        // head[0]=ver, head[1]=cmd (0x01=CONNECT), head[2]=rsv, head[3]=addrType
+        if (!await ReadExactAsync(stream, head, token).ConfigureAwait(false))
+            throw new EndOfStreamException("Incomplete SOCKS5 CONNECT request");
+        if (head[0] != 0x05 || head[1] != 0x01 || head[2] != 0x00)
+            throw new InvalidDataException("Unsupported SOCKS5 request");
         var addressType = head[3];
 
         string? host = null;
@@ -183,24 +217,33 @@ public sealed class Socks5Server : IAsyncDisposable
         {
             case 0x01: // IPv4
                 address = new byte[4];
-                await ReadExactAsync(stream, address, token).ConfigureAwait(false);
+                if (!await ReadExactAsync(stream, address, token).ConfigureAwait(false))
+                    throw new EndOfStreamException("Incomplete destination address");
                 break;
             case 0x03: // domain
                 var lenBuf = new byte[1];
-                await ReadExactAsync(stream, lenBuf, token).ConfigureAwait(false);
+                if (!await ReadExactAsync(stream, lenBuf, token).ConfigureAwait(false))
+                    throw new EndOfStreamException("Incomplete domain length");
+                if (lenBuf[0] == 0) throw new InvalidDataException("Empty destination hostname");
                 var domainBuf = new byte[lenBuf[0]];
-                await ReadExactAsync(stream, domainBuf, token).ConfigureAwait(false);
+                if (!await ReadExactAsync(stream, domainBuf, token).ConfigureAwait(false))
+                    throw new EndOfStreamException("Incomplete destination hostname");
                 host = System.Text.Encoding.ASCII.GetString(domainBuf);
                 break;
             case 0x04: // IPv6
                 address = new byte[16];
-                await ReadExactAsync(stream, address, token).ConfigureAwait(false);
+                if (!await ReadExactAsync(stream, address, token).ConfigureAwait(false))
+                    throw new EndOfStreamException("Incomplete destination address");
                 break;
+            default:
+                throw new InvalidDataException("Unsupported SOCKS5 address type");
         }
 
         var portBuf = new byte[2];
-        await ReadExactAsync(stream, portBuf, token).ConfigureAwait(false);
+        if (!await ReadExactAsync(stream, portBuf, token).ConfigureAwait(false))
+            throw new EndOfStreamException("Incomplete SOCKS5 destination port");
         var port = (portBuf[0] << 8) | portBuf[1];
+        if (port == 0) throw new InvalidDataException("Destination port must be nonzero");
 
         return (host, port, address, addressType);
     }

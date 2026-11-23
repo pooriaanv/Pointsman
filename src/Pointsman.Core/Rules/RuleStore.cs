@@ -34,7 +34,8 @@ public sealed class RuleStore : IDisposable
     public RuleStore(string? filePath = null)
     {
         _filePath = filePath ?? GetDefaultPath();
-        _rules = Load() ?? new Dictionary<string, AppRule>();
+        _rules = Load() ?? throw new InvalidDataException(
+            $"Invalid or unreadable application rules: {_filePath}. Repair the file before starting Pointsman.");
         _reloadDebounce = new Timer(_ => ReloadFromDisk(), null, Timeout.Infinite, Timeout.Infinite);
 
         try
@@ -101,17 +102,31 @@ public sealed class RuleStore : IDisposable
         }
     }
 
-    public IReadOnlyList<AppRule> GetAll() => _rules.Values.ToList();
+    public IReadOnlyList<AppRule> GetAll() => _rules.Values.Select(Clone).ToArray();
 
-    public AppRule? Get(string executablePath) => _rules.GetValueOrDefault(Normalize(executablePath));
+    public AppRule? Get(string executablePath)
+    {
+        var rule = _rules.GetValueOrDefault(Normalize(executablePath));
+        return rule is null ? null : Clone(rule);
+    }
+
+    private static AppRule Clone(AppRule rule) => new()
+    {
+        ExecutablePath = rule.ExecutablePath, AdapterId = rule.AdapterId, Enabled = rule.Enabled
+    };
 
     public void Set(AppRule rule)
     {
         lock (_writeLock)
         {
-            var updated = new Dictionary<string, AppRule>(_rules) { [Normalize(rule.ExecutablePath)] = rule };
-            _rules = updated;
+            if (string.IsNullOrWhiteSpace(rule.ExecutablePath))
+                throw new ArgumentException("Executable path is required", nameof(rule));
+            var updated = new Dictionary<string, AppRule>(_rules)
+            {
+                [Normalize(rule.ExecutablePath)] = Clone(rule)
+            };
             Save(updated);
+            _rules = updated;
         }
     }
 
@@ -123,8 +138,8 @@ public sealed class RuleStore : IDisposable
             if (!updated.Remove(Normalize(executablePath)))
                 return;
 
-            _rules = updated;
             Save(updated);
+            _rules = updated;
         }
     }
 
@@ -133,11 +148,20 @@ public sealed class RuleStore : IDisposable
     // An editor saving a file typically produces several events; collapsing them avoids reparsing
     // once per event, and gives whoever is writing a moment to finish.
     private void OnFileChanged(object sender, FileSystemEventArgs e)
-        => _reloadDebounce.Change(ReloadDebounce, Timeout.InfiniteTimeSpan);
+    {
+        try { _reloadDebounce.Change(ReloadDebounce, Timeout.InfiniteTimeSpan); }
+        catch (ObjectDisposedException) { /* File event raced shutdown. */ }
+    }
 
     private void ReloadFromDisk()
     {
-        var loaded = Load();
+        Dictionary<string, AppRule>? loaded;
+        try { loaded = Load(); }
+        catch (Exception ex)
+        {
+            Pointsman.Core.Diagnostics.DiagnosticsLog.Error("Reload application rules", ex);
+            return; // A file-watcher callback must never crash the process.
+        }
         if (loaded is null)
             return; // unreadable or malformed — keep what's already in effect
 
@@ -152,7 +176,11 @@ public sealed class RuleStore : IDisposable
             _rules = loaded;
         }
 
-        RulesReloaded?.Invoke(this, EventArgs.Empty);
+        try { RulesReloaded?.Invoke(this, EventArgs.Empty); }
+        catch (Exception ex)
+        {
+            Pointsman.Core.Diagnostics.DiagnosticsLog.Error("Notify application rules changed", ex);
+        }
     }
 
     private static bool SameRules(Dictionary<string, AppRule> a, Dictionary<string, AppRule> b)
@@ -184,9 +212,10 @@ public sealed class RuleStore : IDisposable
             try
             {
                 var json = File.ReadAllText(_filePath);
-                var list = JsonSerializer.Deserialize<List<AppRule>>(json, JsonOptions) ?? [];
+                var list = JsonSerializer.Deserialize<List<AppRule>>(json, JsonOptions)
+                    ?? throw new JsonException("Application rules must be an array");
                 return list
-                    .Where(r => !string.IsNullOrWhiteSpace(r.ExecutablePath))
+                    .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.ExecutablePath))
                     .GroupBy(r => Normalize(r.ExecutablePath))
                     .ToDictionary(g => g.Key, g => g.Last());
             }
@@ -202,7 +231,19 @@ public sealed class RuleStore : IDisposable
     private void Save(Dictionary<string, AppRule> rules)
     {
         var json = JsonSerializer.Serialize(rules.Values.ToList(), JsonOptions);
-        File.WriteAllText(_filePath, json);
+        var directory = Path.GetDirectoryName(Path.GetFullPath(_filePath))!;
+        Directory.CreateDirectory(directory);
+        var temporary = Path.Combine(directory, Path.GetFileName(_filePath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            File.WriteAllText(temporary, json);
+            File.Move(temporary, _filePath, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(temporary); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     public void Dispose()

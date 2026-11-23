@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Pointsman.App.ViewModels"
-        Title="Pointsman — Choose a network adapter per app"
+        Title="Pointsman — Network routing rules"
         Icon="pack://application:,,,/Resources/pointsman.ico"
         Height="740" Width="1200"
         MinHeight="520" MinWidth="880"
@@ -74,8 +74,8 @@
                 BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0,1,0,0">
             <StackPanel>
                 <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" LineHeight="18">
-                    Rules take effect automatically — pick an adapter and that app's connections use it, with nothing to configure inside the app.
-                    Not covered: DNS lookups, which Windows resolves through a system service and so always follow the default route.
+                    App rules control their default adapter. Destination rules can override per-app defaults by IP, CIDR, protocol or port.
+                    Hostname rules use best-effort DNS-to-IP matching; Windows DNS requests themselves still follow system routing. IPv6 adapter routing is not supported.
                 </TextBlock>
                 <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource BrandMutedBrush}" Margin="0,6,0,0">
                     Pointsman comes with absolutely no warranty. Free software under the GNU GPL v3 — you are welcome to redistribute it under its terms.
@@ -156,6 +156,8 @@
                              Tag="Search apps…"/>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Destination rules" Style="{StaticResource SecondaryButton}"
+                                Command="{Binding OpenRoutingRulesCommand}"/>
                         <Button Content="Add app" Style="{StaticResource PrimaryButton}"
                                 Command="{Binding BrowseForAppCommand}"/>
                         <Button Content="Refresh" Style="{StaticResource SecondaryButton}"

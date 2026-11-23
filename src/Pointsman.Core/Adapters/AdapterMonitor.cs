@@ -57,9 +57,16 @@ public sealed class AdapterMonitor : IDisposable
                 continue;
 
             var ipProps = nic.GetIPProperties();
-            var ipv4 = ipProps.UnicastAddresses
-                .FirstOrDefault(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                ?.Address.ToString();
+            var ipv4Info = ipProps.UnicastAddresses.FirstOrDefault(a =>
+                a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork);
+            var ipv4 = ipv4Info?.Address.ToString();
+            var ipv4Gateway = ipProps.GatewayAddresses
+                .FirstOrDefault(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                    && !a.Address.Equals(System.Net.IPAddress.Any))?.Address.ToString();
+
+            int? interfaceIndex = null;
+            try { interfaceIndex = ipProps.GetIPv4Properties()?.Index; }
+            catch (NetworkInformationException) { /* Adapter disappeared during enumeration. */ }
 
             result.Add(new NetworkAdapterInfo
             {
@@ -69,6 +76,9 @@ public sealed class AdapterMonitor : IDisposable
                 Kind = kind.Value,
                 IsUp = nic.OperationalStatus == OperationalStatus.Up,
                 IPv4Address = ipv4,
+                IPv4InterfaceIndex = interfaceIndex,
+                IPv4PrefixLength = ipv4Info?.PrefixLength,
+                IPv4DefaultGateway = ipv4Gateway,
                 SpeedBitsPerSecond = SafeSpeed(nic),
             });
         }
