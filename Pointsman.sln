@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pointsman.Core", "src\Point
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pointsman.App", "src\Pointsman.App\Pointsman.App.csproj", "{38B89BDD-6D76-46A0-811F-8E3D1D77827C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pointsman.PolicySelfTests", "tests\Pointsman.PolicySelfTests\Pointsman.PolicySelfTests.csproj", "{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,6 +33,18 @@ Global
 		{57C64345-7999-4181-9EB6-04E24B270825}.Release|x64.Build.0 = Release|x64
 		{57C64345-7999-4181-9EB6-04E24B270825}.Release|x86.ActiveCfg = Release|x64
 		{57C64345-7999-4181-9EB6-04E24B270825}.Release|x86.Build.0 = Release|x64
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Debug|x64.Build.0 = Debug|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Debug|x86.Build.0 = Debug|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Release|x64.ActiveCfg = Release|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Release|x64.Build.0 = Release|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Release|x86.ActiveCfg = Release|Any CPU
+		{CCF03A2B-A9F4-4106-889E-44EA3F2D9120}.Release|x86.Build.0 = Release|Any CPU
 		{38B89BDD-6D76-46A0-811F-8E3D1D77827C}.Debug|Any CPU.ActiveCfg = Debug|x64
 		{38B89BDD-6D76-46A0-811F-8E3D1D77827C}.Debug|Any CPU.Build.0 = Debug|x64
 		{38B89BDD-6D76-46A0-811F-8E3D1D77827C}.Debug|x64.ActiveCfg = Debug|x64

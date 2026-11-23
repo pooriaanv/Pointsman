@@ -42,7 +42,7 @@ public sealed class AppRowViewModel : ViewModelBase
     public bool IsRuleInactive => SelectedAdapter.AdapterId is not null && SelectedAdapter.ProxyPort is null;
 
     public string RuleInactiveText =>
-        "⚠️ This adapter isn't available right now, so the rule is not in effect — the app is using the system's default route.";
+        "The selected adapter is unavailable. Matching new TCP/UDP connections will be blocked rather than sent over the default route.";
 
     public IReadOnlyList<AdapterChoiceViewModel> AvailableAdapters => _availableAdapters;
 
@@ -90,6 +90,7 @@ public sealed class AppRowViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(SelectedAdapter));
         OnPropertyChanged(nameof(IsRuleInactive));
+        OnPropertyChanged(nameof(SortGroup));
         OnAdapterChanged?.Invoke(this, choice);
     }
 
@@ -138,6 +139,7 @@ public sealed class AppRowViewModel : ViewModelBase
             }
 
             SelectedAdapter = selection;
+            OnPropertyChanged(nameof(IsRuleInactive));
             OnPropertyChanged(nameof(SortGroup));
         }
         finally

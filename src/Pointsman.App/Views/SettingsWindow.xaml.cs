@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using Pointsman.Core.Diagnostics;
 using Pointsman.Core.Settings;
 using Pointsman.Core.Updates;
 
@@ -34,7 +35,17 @@ public partial class SettingsWindow : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         var autoInstall = AutoInstallBox.IsChecked == true;
-        _store.Update(s => s with { AutoInstallUpdates = autoInstall });
-        DialogResult = true;
+        try
+        {
+            _store.Update(s => s with { AutoInstallUpdates = autoInstall });
+            DialogResult = true;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticsLog.Error("Save application settings", ex);
+            System.Windows.MessageBox.Show(this,
+                $"Settings were not saved.\n\n{ex.Message}\n\nLog: {DiagnosticsLog.FilePath}",
+                "Pointsman settings", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

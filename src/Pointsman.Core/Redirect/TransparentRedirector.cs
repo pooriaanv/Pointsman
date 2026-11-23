@@ -1,6 +1,8 @@
 using System.IO;
 using System.Net;
 using Pointsman.Core.Models;
+using Pointsman.Core.Diagnostics;
+using Pointsman.Core.Policies;
 using Pointsman.Core.Proxy;
 using Pointsman.Core.Rules;
 using SharpDivert;
@@ -16,14 +18,11 @@ namespace Pointsman.Core.Redirect;
 ///
 /// This only touches flows it recognizes; everything else passes through byte-for-byte.
 ///
-/// Performance matters here: this handle sees every outbound TCP packet on the machine (WinDivert
-/// filters can't reference our dynamically-chosen proxy ports or per-process rules, so we can't
-/// narrow the filter further than direction/protocol). It's scoped to "outbound and tcp" — genuinely
-/// inbound traffic (replies arriving from the real internet) never needs touching in this design,
-/// since both a redirected app's request and our own proxy's reply are "outbound" from WinDivert's
-/// perspective (WinDivert considers packets outbound whenever they're leaving a process/socket,
-/// which covers both legs of a loopback conversation). The receive loop also runs one task per CPU
-/// core against the same handle, which WinDivert explicitly supports, to keep up under load.
+/// The caller selects a capture filter. Exact-IP rules can be limited to those destinations
+/// and the known proxy reply ports. Per-application rules still need non-loopback outbound
+/// traffic because the NETWORK layer does not expose PIDs. Inbound internet replies are not
+/// intercepted; the local relay's outgoing loopback replies are selectively captured.
+/// A single receive loop preserves the SYN-before-payload ordering used by the NAT table.
 /// </summary>
 public sealed class TransparentRedirector : IDisposable
 {
@@ -34,6 +33,8 @@ public sealed class TransparentRedirector : IDisposable
     private readonly FlowTracker _flowTracker;
     private readonly NatTable _natTable;
     private readonly RuleStore _ruleStore;
+    private readonly PolicyEngine _policyEngine;
+    private readonly DomainAddressIndex _domainIndex;
     private readonly ProxyManager _proxyManager;
     private readonly HashSet<string> _excludedExecutableNames;
 
@@ -41,6 +42,14 @@ public sealed class TransparentRedirector : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task[] _loops;
     private readonly Timer _proxyPortCacheTimer;
+    private int _fatalErrorReported;
+
+    /// <summary>
+    /// Raised once if packet interception cannot continue safely. When the WinDivert handle
+    /// is closed, Windows resumes normal routing; destination policies are no longer enforced.
+    /// The UI must warn the user instead of silently claiming a policy is still active.
+    /// </summary>
+    public event EventHandler<Exception>? Faulted;
 
     // Refreshed periodically instead of on every packet — the ProxyManager lookups take a lock
     // and allocate, which is too expensive to do per-packet, and the ports only change when an
@@ -56,36 +65,65 @@ public sealed class TransparentRedirector : IDisposable
         FlowTracker flowTracker,
         NatTable natTable,
         RuleStore ruleStore,
+        PolicyEngine policyEngine,
+        DomainAddressIndex domainIndex,
         ProxyManager proxyManager,
-        IEnumerable<string> excludedExecutableNames)
+        IEnumerable<string> excludedExecutableNames,
+        string captureFilter)
     {
         _flowTracker = flowTracker;
         _natTable = natTable;
         _ruleStore = ruleStore;
+        _policyEngine = policyEngine;
+        _domainIndex = domainIndex;
         _proxyManager = proxyManager;
         _excludedExecutableNames = new HashSet<string>(excludedExecutableNames, StringComparer.OrdinalIgnoreCase);
 
-        _handle = new WinDivert("outbound and (tcp or udp)", WinDivert.Layer.Network, 0, 0);
-        _handle.QueueLength = WinDivert.QueueLengthMax;
-        _handle.QueueTime = WinDivert.QueueTimeMax;
-        _handle.QueueSize = WinDivert.QueueSizeMax;
+        ArgumentException.ThrowIfNullOrWhiteSpace(captureFilter);
+        // Prepare managed state BEFORE opening a handle that can capture real traffic.
+        RefreshProxyPortsCache();
+        _handle = new WinDivert(captureFilter, WinDivert.Layer.Network, 0, 0);
+        Timer? timer = null;
+        try
+        {
+            _handle.QueueLength = WinDivert.QueueLengthMax;
+            _handle.QueueTime = WinDivert.QueueTimeMax;
+            _handle.QueueSize = WinDivert.QueueSizeMax;
+            timer = new Timer(_ => RefreshProxyPortsCache(), null,
+                ProxyPortCacheInterval, ProxyPortCacheInterval);
+            _proxyPortCacheTimer = timer;
+            _proxyManager.PortsChanged += OnProxyPortsChanged;
 
-        _proxyPortCacheTimer = new Timer(_ => RefreshProxyPortsCache(), null, TimeSpan.Zero, ProxyPortCacheInterval);
-
-        // Deliberately a single receive loop, even though WinDivert supports several on one
-        // handle. A flow's SYN must be fully processed — and its NAT entry written — before any
-        // later packet of that flow is evaluated, otherwise the later packet finds no entry, is
-        // left unredirected, and the connection ends up half-redirected (which the proxy answers
-        // with RST). One loop gives that ordering for free. It keeps up comfortably here: a 1 MB
-        // download and five concurrent connections both ran clean with all of the machine's
-        // normal background traffic flowing through the same loop.
-        _loops = [Task.Run(RunLoop)];
+            // One receive loop maintains SYN / NAT ordering. If any of the setup
+            // steps fail, the catch block immediately releases the capture handle.
+            _loops = [Task.Run(RunLoop)];
+            DiagnosticsLog.Write($"Packet interception started: {captureFilter}");
+        }
+        catch
+        {
+            _proxyManager.PortsChanged -= OnProxyPortsChanged;
+            timer?.Dispose();
+            _handle.Dispose(); // Never leave an undrained system-wide capture open.
+            _cts.Dispose();
+            throw;
+        }
     }
+
+    private void OnProxyPortsChanged(object? sender, EventArgs e) => RefreshProxyPortsCache();
 
     private void RefreshProxyPortsCache()
     {
-        _proxyPortsCache = new HashSet<int>(_proxyManager.GetAllPorts().Values);
-        _udpRelayPortsCache = new HashSet<int>(_proxyManager.GetAllUdpPorts());
+        try
+        {
+            _proxyPortsCache = new HashSet<int>(_proxyManager.GetAllPorts().Values);
+            _udpRelayPortsCache = new HashSet<int>(_proxyManager.GetAllUdpPorts());
+        }
+        catch (Exception ex)
+        {
+            // Timer callbacks run on ThreadPool. Exceptions must not terminate the
+            // entire Windows process (which could leave driver state unclear).
+            DiagnosticsLog.Error("Refresh local proxy port cache", ex);
+        }
     }
 
     private void RunLoop()
@@ -100,9 +138,15 @@ public sealed class TransparentRedirector : IDisposable
             {
                 (recvLen, addrLen) = _handle.RecvEx(recvBuf, addrBuf);
             }
-            catch (WinDivertException)
+            catch (WinDivertException ex)
             {
-                return; // handle closed
+                if (!_cts.IsCancellationRequested) StopOnFatalError(ex);
+                return; // handle closed or driver stopped
+            }
+            catch (Exception ex)
+            {
+                StopOnFatalError(ex);
+                return;
             }
 
             if (addrLen == 0)
@@ -113,7 +157,19 @@ public sealed class TransparentRedirector : IDisposable
 
             // TryProcessPacket mutates the packet in place through pointers pinned into this
             // same Memory<byte> — it must NOT be given a copy, or the rewrite would be lost.
-            var action = TryProcessPacket(packet, ref addr, out var debugTag);
+            PacketAction action;
+            string? debugTag;
+            try
+            {
+                action = TryProcessPacket(packet, ref addr, out debugTag);
+            }
+            catch (Exception ex)
+            {
+                // If a parser/route decision faults, do not leave an active WinDivert handle
+                // intercepting the entire machine with no receive loop to drain it.
+                StopOnFatalError(ex);
+                return;
+            }
 
             if (action == PacketAction.Drop)
             {
@@ -148,8 +204,29 @@ public sealed class TransparentRedirector : IDisposable
             {
                 if (debugTag is not null)
                     DebugLog.Write($"SendEx FAIL {debugTag}: {ex.Message}");
+                // Do not keep a system-wide packet capture open after reinjection fails.
+                // Even one failure can affect connectivity, especially during VPN changes.
+                StopOnFatalError(new IOException("WinDivert packet reinjection failed", ex));
+                return;
+            }
+            catch (Exception ex)
+            {
+                StopOnFatalError(ex);
+                return;
             }
         }
+    }
+
+    private void StopOnFatalError(Exception error)
+    {
+        if (Interlocked.Exchange(ref _fatalErrorReported, 1) != 0) return;
+        DiagnosticsLog.Error("WinDivert packet interception failure", error);
+        // A dead receive loop holding an interception handle can stall *all* TCP/UDP.
+        // Closing the handle restores OS networking, but it does not enforce routing
+        // policies. This is a fail-OPEN emergency recovery and must be visible to users.
+        try { _handle.Dispose(); } catch (Exception ex) { DiagnosticsLog.Error("Close WinDivert", ex); }
+        try { Faulted?.Invoke(this, error); }
+        catch (Exception ex) { DiagnosticsLog.Error("Notify WinDivert failure", ex); }
     }
 
     private enum PacketAction
@@ -185,7 +262,7 @@ public sealed class TransparentRedirector : IDisposable
             return ClassifyIPv6(packet, enumerator.Current.IPv6Hdr, tcpHdr, udpHdr, out debugTag);
 
         if (udpHdr != null)
-            return TryProcessUdp(ipv4Hdr, udpHdr, ref addr, out debugTag) ? PacketAction.Rewrite : PacketAction.Forward;
+            return TryProcessUdp(ipv4Hdr, udpHdr, ref addr, out debugTag);
 
         if (tcpHdr == null)
             return PacketAction.Forward; // ICMP and friends
@@ -198,7 +275,11 @@ public sealed class TransparentRedirector : IDisposable
         // TCP flags live at byte 13 of the TCP header, which starts right after the IPv4
         // header (whose length is the low nibble of byte 0, in 32-bit words).
         var packetSpan = packet.Span;
-        var tcpFlags = packetSpan[(packetSpan[0] & 0x0F) * 4 + 13];
+        if (packetSpan.Length < 20) return PacketAction.Forward;
+        var tcpOffset = (packetSpan[0] & 0x0F) * 4;
+        if (tcpOffset < 20 || tcpOffset + 14 > packetSpan.Length)
+            return PacketAction.Forward;
+        var tcpFlags = packetSpan[tcpOffset + 13];
         var isSyn = (tcpFlags & 0x02) != 0 && (tcpFlags & 0x10) == 0;
 
         if (TraceFlowPort != 0 && (srcPort == TraceFlowPort || dstPort == TraceFlowPort))
@@ -216,6 +297,7 @@ public sealed class TransparentRedirector : IDisposable
             ipv4Hdr->SrcAddr = ToIPv4Addr(natEntry.OriginalDestAddress);
             ipv4Hdr->DstAddr = ToIPv4Addr(natEntry.OriginalSrcAddress);
             tcpHdr->SrcPort = natEntry.OriginalDestPort;
+            _natTable.Touch(ProtocolTcp, dstPort);
             debugTag = "CaseB";
             return PacketAction.Rewrite;
         }
@@ -232,23 +314,43 @@ public sealed class TransparentRedirector : IDisposable
             && tracked.OriginalDestPort == dstPort
             && tracked.OriginalDestAddress.Equals(dstAddr))
         {
+            _natTable.Touch(ProtocolTcp, srcPort);
             RewriteToProxy(ipv4Hdr, tcpHdr, ref addr, tracked.ProxyPort);
             debugTag = "CaseA-established";
             return PacketAction.Rewrite;
         }
 
+        if (dstPort == 0)
+            return PacketAction.Forward;
+
         if (!isSyn)
-            return PacketAction.Forward; // mid-flow packet for a flow we chose not to redirect
+        {
+            // Only flows whose SYN was redirected have a NAT record. A flow whose
+            // SYN was allowed through (or beat socket owner discovery) is NOT proof
+            // of an attempted route. Dropping its later packets based on a rule
+            // evaluated after the fact breaks unrelated, already-established TCP.
+            return PacketAction.Forward;
+        }
 
         if (!_flowTracker.TryGetOwner(ProtocolTcp, srcPort, out var owner)
             || owner.ProcessId == _flowTracker.SelfProcessId
             || _excludedExecutableNames.Contains(Path.GetFileName(owner.ExecutablePath)))
             return PacketAction.Forward;
 
-        var rule = ResolveEffectiveRule(owner);
-        if (rule?.AdapterId is null
-            || _proxyManager.GetPortForAdapter(rule.AdapterId) is not int proxyPort)
+        var decision = ResolveRoute(owner, dstAddr, dstPort, ProtocolTcp);
+        if (decision.Kind == RouteDecisionKind.Block)
+        {
+            debugTag = $"TCP blocked by {(decision.PolicyId?.ToString() ?? "legacy adapter rule")} to {dstAddr}:{dstPort}";
+            return PacketAction.Drop;
+        }
+        if (decision.Kind != RouteDecisionKind.Route)
             return PacketAction.Forward;
+
+        if (_proxyManager.GetPortForAdapter(decision.AdapterId!) is not int proxyPort)
+        {
+            debugTag = $"TCP route to {decision.AdapterId} unavailable, fail-closed";
+            return PacketAction.Drop;
+        }
 
         TraceFlowPort = srcPort;
         DebugLog.Write($"CaseA SYN: {srcAddr}:{srcPort} -> {dstAddr}:{dstPort} owner={Path.GetFileName(owner.ExecutablePath)} => redirecting flow to 127.0.0.1:{proxyPort}");
@@ -278,8 +380,9 @@ public sealed class TransparentRedirector : IDisposable
 
         byte protocol;
         ushort srcPort;
-        if (tcpHdr != null) { protocol = ProtocolTcp; srcPort = tcpHdr->SrcPort; }
-        else if (udpHdr != null) { protocol = ProtocolUdp; srcPort = udpHdr->SrcPort; }
+        ushort dstPort;
+        if (tcpHdr != null) { protocol = ProtocolTcp; srcPort = tcpHdr->SrcPort; dstPort = tcpHdr->DstPort; }
+        else if (udpHdr != null) { protocol = ProtocolUdp; srcPort = udpHdr->SrcPort; dstPort = udpHdr->DstPort; }
         else return PacketAction.Forward;
 
         // The destination sits at a fixed offset in the 40-byte IPv6 header.
@@ -300,10 +403,16 @@ public sealed class TransparentRedirector : IDisposable
             || _excludedExecutableNames.Contains(Path.GetFileName(owner.ExecutablePath)))
             return PacketAction.Forward;
 
-        if (ResolveEffectiveRule(owner) is null)
+        if (dstPort == 0)
             return PacketAction.Forward;
 
-        debugTag = $"IPv6 from {Path.GetFileName(owner.ExecutablePath)} to {destination} (rule set, forcing IPv4 fallback)";
+        var decision = ResolveRoute(owner, destination, dstPort, protocol);
+        if (decision.Kind is RouteDecisionKind.Unmatched or RouteDecisionKind.Direct)
+            return PacketAction.Forward;
+
+        // The IPv4-only transparent relay cannot carry IPv6. Block selected IPv6 routes
+        // instead of silently sending them through the Windows default route.
+        debugTag = $"IPv6 from {Path.GetFileName(owner.ExecutablePath)} to {destination} blocked: {decision.Explanation}";
         return PacketAction.Drop;
     }
 
@@ -320,7 +429,7 @@ public sealed class TransparentRedirector : IDisposable
     /// NAT entry yet and the answer is recorded for the rest of the flow. Rebinding a live flow
     /// mid-stream is still avoided: once an entry exists it is followed, never recomputed.
     /// </summary>
-    private unsafe bool TryProcessUdp(
+    private unsafe PacketAction TryProcessUdp(
         WinDivertIPv4Hdr* ipv4Hdr, WinDivertUDPHdr* udpHdr, ref WinDivertAddress addr, out string? debugTag)
     {
         debugTag = null;
@@ -340,41 +449,62 @@ public sealed class TransparentRedirector : IDisposable
             ipv4Hdr->DstAddr = ToIPv4Addr(reply.OriginalSrcAddress);
             udpHdr->SrcPort = reply.OriginalDestPort;
             debugTag = "Udp-reply";
-            return true;
+            return PacketAction.Rewrite;
         }
 
         if (IPAddress.IsLoopback(dstAddr))
-            return false;
+            return PacketAction.Forward;
 
         // Already-classified flow: keep sending it the same way. The destination is re-checked
         // because one UDP socket can legitimately send to several peers, and only the datagrams
         // matching the recorded peer belong to this NAT entry.
-        if (_natTable.TryGet(ProtocolUdp, srcPort, out var tracked))
+        var hasExistingNat = _natTable.TryGet(ProtocolUdp, srcPort, out var tracked);
+        if (hasExistingNat && tracked.OriginalDestPort == dstPort &&
+            tracked.OriginalDestAddress.Equals(dstAddr))
         {
-            if (tracked.OriginalDestPort != dstPort || !tracked.OriginalDestAddress.Equals(dstAddr))
-                return false;
-
             _natTable.Touch(ProtocolUdp, srcPort);
             RewriteUdpToRelay(ipv4Hdr, udpHdr, ref addr, tracked.ProxyPort);
             debugTag = "Udp-established";
-            return true;
+            return PacketAction.Rewrite;
         }
 
         if (!_flowTracker.TryGetOwner(ProtocolUdp, srcPort, out var owner)
             || owner.ProcessId == _flowTracker.SelfProcessId
             || _excludedExecutableNames.Contains(Path.GetFileName(owner.ExecutablePath)))
-            return false;
+            return PacketAction.Forward;
 
-        var rule = ResolveEffectiveRule(owner);
-        if (rule?.AdapterId is null
-            || _proxyManager.GetUdpPortForAdapter(rule.AdapterId) is not int relayPort)
-            return false;
+        if (dstPort == 0)
+            return PacketAction.Forward;
+
+        var decision = ResolveRoute(owner, dstAddr, dstPort, ProtocolUdp);
+        if (decision.Kind == RouteDecisionKind.Block)
+        {
+            debugTag = $"UDP blocked by {(decision.PolicyId?.ToString() ?? "legacy adapter rule")} to {dstAddr}:{dstPort}";
+            return PacketAction.Drop;
+        }
+        if (decision.Kind != RouteDecisionKind.Route)
+            return PacketAction.Forward;
+
+        // The existing transparent UDP protocol uses the app's source port as its NAT key.
+        // It cannot simultaneously relay two different destinations from one source port.
+        // Do not let a second routed destination leak out directly or corrupt that NAT entry.
+        if (hasExistingNat)
+        {
+            debugTag = $"UDP multiple destinations on port {srcPort}: blocked to protect NAT mapping";
+            return PacketAction.Drop;
+        }
+
+        if (_proxyManager.GetUdpPortForAdapter(decision.AdapterId!) is not int relayPort)
+        {
+            debugTag = $"UDP route to {decision.AdapterId} unavailable, fail-closed";
+            return PacketAction.Drop;
+        }
 
         DebugLog.Write($"Udp new: {srcAddr}:{srcPort} -> {dstAddr}:{dstPort} owner={Path.GetFileName(owner.ExecutablePath)} => relay 127.0.0.1:{relayPort}");
         _natTable.Track(ProtocolUdp, srcPort, dstAddr, dstPort, srcAddr, (ushort)relayPort);
         RewriteUdpToRelay(ipv4Hdr, udpHdr, ref addr, (ushort)relayPort);
         debugTag = "Udp-new";
-        return true;
+        return PacketAction.Rewrite;
     }
 
     private static unsafe void RewriteUdpToRelay(
@@ -468,6 +598,33 @@ public sealed class TransparentRedirector : IDisposable
         return null;
     }
 
+    /// <summary>
+    /// Specific destination policies take precedence over legacy per-application defaults.
+    /// The adapter snapshot is populated only for listeners that started successfully.
+    /// </summary>
+    private RouteDecision ResolveRoute(FlowOwner owner, IPAddress destination, ushort port, byte protocol)
+    {
+        var connection = new ConnectionDestination(
+            Path.GetFileName(owner.ExecutablePath), owner.ExecutablePath, destination, port,
+            protocol == ProtocolTcp ? TransportProtocol.Tcp : TransportProtocol.Udp);
+        var policy = _policyEngine.Evaluate(connection, _proxyManager.GetAvailability(), _domainIndex);
+        if (policy.Kind != RouteDecisionKind.Unmatched)
+            return policy;
+
+        var legacy = ResolveEffectiveRule(owner);
+        if (legacy?.AdapterId is not string adapterId)
+            return RouteDecision.Unmatched;
+
+        if (destination.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return new RouteDecision(RouteDecisionKind.Block, null, null, "Legacy app rule cannot route IPv6");
+
+        if (!_proxyManager.GetAvailability().Any(a => a.IsUp && a.Id.Equals(adapterId,
+                StringComparison.OrdinalIgnoreCase) && a.SupportsIpv4))
+            return new RouteDecision(RouteDecisionKind.Block, null, null, "Legacy app adapter unavailable");
+
+        return new RouteDecision(RouteDecisionKind.Route, null, adapterId, "Legacy per-app adapter");
+    }
+
     private bool IsKnownProxyPort(ushort port) => _proxyPortsCache.Contains(port);
 
     private static IPv4Addr ToIPv4Addr(IPAddress address) => IPv4Addr.Parse(address.ToString());
@@ -475,6 +632,7 @@ public sealed class TransparentRedirector : IDisposable
     public void Dispose()
     {
         _cts.Cancel();
+        _proxyManager.PortsChanged -= OnProxyPortsChanged;
         _proxyPortCacheTimer.Dispose();
         _handle.Dispose();
         try { Task.WaitAll(_loops, TimeSpan.FromSeconds(2)); } catch { /* ignore */ }

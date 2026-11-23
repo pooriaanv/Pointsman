@@ -13,7 +13,8 @@ internal static class DebugLog
     private static readonly object Lock = new();
 
     private static readonly string Path = System.IO.Path.Combine(
-        AppContext.BaseDirectory, "debug-trace.log");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Pointsman", "debug-trace.log");
 
     /// <summary>Off by default: writing a line per packet to disk under a lock is far too slow to leave on.</summary>
     public static bool Enabled { get; set; } =
@@ -26,7 +27,17 @@ internal static class DebugLog
 
         lock (Lock)
         {
-            File.AppendAllText(Path, $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
+            try
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
+                File.AppendAllText(Path, $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Tracing is optional. Disabling it is preferable to crashing interception.
+                Enabled = false;
+                Pointsman.Core.Diagnostics.DiagnosticsLog.Error("Packet trace disabled", ex);
+            }
         }
     }
 }

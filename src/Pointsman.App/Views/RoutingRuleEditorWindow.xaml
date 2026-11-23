@@ -1,0 +1,160 @@
+<Window x:Class="Pointsman.App.Views.RoutingRuleEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit destination rule" Width="760" Height="800" MinWidth="610" MinHeight="600"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource CanvasBrush}"
+        FontFamily="Segoe UI Variable Text, Segoe UI">
+    <DockPanel Margin="22">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,15">
+            <TextBlock Text="Destination policy" FontSize="20" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextPrimaryBrush}"/>
+            <TextBlock Text="A higher priority wins; ties prefer the more specific destination."
+                       Margin="0,5,0,0" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Save rule" Style="{StaticResource PrimaryButton}" Click="Save_Click" IsDefault="True"/>
+            <Button Content="Cancel" Style="{StaticResource SecondaryButton}" IsCancel="True"/>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Name" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Priority" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding PriorityText, UpdateSourceTrigger=PropertyChanged}" Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <CheckBox Content="Enabled" IsChecked="{Binding Enabled}" Margin="0,4,0,13"/>
+                <TextBlock Text="APPLICATION SCOPE" Style="{StaticResource SectionLabel}" Margin="0,4,0,10"/>
+                <Grid Margin="0,0,0,9">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1*"/>
+                        <ColumnDefinition Width="2*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Process name (* = all)" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ProcessName, UpdateSourceTrigger=PropertyChanged}" Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Full executable path (optional)" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ProcessPath, UpdateSourceTrigger=PropertyChanged}" Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock Text="DESTINATION MATCH" Style="{StaticResource SectionLabel}" Margin="0,12,0,10"/>
+                <Grid Margin="0,0,0,11">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Type" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding Destinations}" SelectedItem="{Binding DestinationKind}"
+                                  Style="{StaticResource ModernComboBox}" Height="36" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="IP, CIDR, or exact hostname (blank if Any)"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Destination, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextTertiaryBrush}" Margin="0,0,0,10">
+                    Examples: 8.8.8.8, 192.168.1.0/24, or example.com. Hostnames are resolved by Windows
+                    and matched by IP, so shared CDN addresses and DNS changes can produce incorrect matches.
+                    For strict policies use IP/CIDR; wildcard hostnames are unsupported.
+                </TextBlock>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Protocol" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding Protocols}" SelectedItem="{Binding Protocol}"
+                                  Style="{StaticResource ModernComboBox}" Height="36" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                        <TextBlock Text="Port from (optional)" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding FromPortText, UpdateSourceTrigger=PropertyChanged}" Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Port to (optional)" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ToPortText, UpdateSourceTrigger=PropertyChanged}" Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <TextBlock Text="ROUTING ACTION" Style="{StaticResource SectionLabel}" Margin="0,12,0,10"/>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Action" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding Actions}" SelectedItem="{Binding Action}"
+                                  Style="{StaticResource ModernComboBox}" Height="36" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Outbound adapter (Route action only)" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding AdapterChoices}" DisplayMemberPath="Label"
+                                  SelectedValuePath="AdapterId" SelectedValue="{Binding AdapterId, Mode=TwoWay}"
+                                  Style="{StaticResource ModernComboBox}" Height="36" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="185"/>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="If adapter unavailable" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding FallbackActions}" SelectedItem="{Binding WhenUnavailable}"
+                                  Style="{StaticResource ModernComboBox}" Height="36" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                        <TextBlock Text="First fallback adapter" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding AdapterChoices}" DisplayMemberPath="Label"
+                                  SelectedValuePath="AdapterId" SelectedValue="{Binding FirstFallbackAdapterId, Mode=TwoWay}"
+                                  Style="{StaticResource ModernComboBox}" Height="36" Margin="0,5,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Other fallback IDs (optional)" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding AlternativeAdapterIdsText, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <Border Margin="0,12,0,12" Padding="12" BorderBrush="{StaticResource TextTertiaryBrush}"
+                        BorderThickness="1" CornerRadius="8">
+                    <StackPanel>
+                        <CheckBox Content="Install Windows system route (all apps / TCP, UDP, ping)"
+                                  IsChecked="{Binding UseSystemRoute}" FontWeight="SemiBold"/>
+                        <TextBlock TextWrapping="Wrap" Margin="0,6,0,9" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}">
+                            Requires Route + IPv4 IP or /24-/32 CIDR, Process *, Any protocol, no ports or fallbacks.
+                            Changes the routing table for every app, not just this process. Routes are temporary and
+                            removed on normal exit. Not a VPN kill switch: a disconnected adapter can make traffic
+                            fall back to a different OS route. A VPN firewall may still block local access.
+                        </TextBlock>
+                        <TextBlock Text="IPv4 next hop / gateway (optional; auto-detected when blank)"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBox Text="{Binding SystemNextHop, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="9,7" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Border>
+                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextTertiaryBrush}">
+                    Block is the safe default. Direct uses the system route if the adapter is unavailable.
+                    TryAlternatives uses the selected fallback, then any additional comma-separated adapter IDs.
+                    This does not guarantee VPN reachability.
+                </TextBlock>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

@@ -45,7 +45,13 @@ public sealed class FlowTracker : IDisposable
         // outbound connections being redirected back into themselves.
         _handle = new WinDivert("event == CONNECT or event == BIND or event == CLOSE",
             WinDivert.Layer.Socket, 0, WinDivert.Flag.Sniff | WinDivert.Flag.RecvOnly);
-        _captureLoop = Task.Run(CaptureLoop);
+        try { _captureLoop = Task.Run(CaptureLoop); }
+        catch
+        {
+            _handle.Dispose();
+            _cts.Dispose();
+            throw;
+        }
     }
 
     public bool TryGetOwner(byte protocol, ushort localPort, out FlowOwner owner)
@@ -136,9 +142,15 @@ public sealed class FlowTracker : IDisposable
                 // slower may happen here.
                 _ownerPids[key] = (int)socket.ProcessId;
             }
-            catch (WinDivertException)
+            catch (WinDivertException ex)
             {
-                // Handle closed (Dispose) or the driver went away — stop the loop either way.
+                if (!_cts.IsCancellationRequested)
+                    Pointsman.Core.Diagnostics.DiagnosticsLog.Error("WinDivert socket capture stopped", ex);
+                return;
+            }
+            catch (Exception ex)
+            {
+                Pointsman.Core.Diagnostics.DiagnosticsLog.Error("WinDivert socket capture failed", ex);
                 return;
             }
         }

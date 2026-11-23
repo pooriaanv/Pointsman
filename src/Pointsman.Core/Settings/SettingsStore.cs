@@ -50,8 +50,8 @@ public sealed class SettingsStore
             if (updated == _current)
                 return;
 
-            _current = updated;
             Save(updated);
+            _current = updated;
         }
 
         Changed?.Invoke(this, updated);
@@ -73,14 +73,24 @@ public sealed class SettingsStore
 
     private void Save(AppSettings settings)
     {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(_filePath))!;
+        Directory.CreateDirectory(directory);
+        var temporary = Path.Combine(directory, Path.GetFileName(_filePath) + "." +
+            Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(settings, JsonOptions));
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 4096, FileOptions.WriteThrough))
+            {
+                JsonSerializer.Serialize(stream, settings, JsonOptions);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, _filePath, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        finally
         {
-            // The change still holds for this session; it just won't survive a restart.
+            try { if (File.Exists(temporary)) File.Delete(temporary); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* best effort */ }
         }
     }
 }
